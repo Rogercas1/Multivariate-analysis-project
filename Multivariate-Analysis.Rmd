@@ -1,0 +1,700 @@
+---
+title: "Economic and HDI Analysi"
+author: "Roger Castillo"
+date: "12/10/2023"
+output:
+ pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+country <- read.csv('sample-data.csv')
+```
+
+## Data Pre-processing
+- Renaming long column names
+```{r}
+names(country)
+names(country[,9:10])
+names(country)[names(country) == "Expenditure..M..."] <- "Expenditure"
+names(country)[names(country) == "Deficit...M..."] <- "Deficit"
+names(country[,9:10])
+country <- na.omit(country)
+```
+ 
+ 
+## Economic Analysis
+- What is the distribution of GDP and GDP per capita across continents and countries?
+- Is there a correlation between debt and GDP or debt per capita and GDP per capita?
+
+
+```{r}
+library(ggplot2)
+# Scatter plot for GDP vs. GDP per capita
+ggplot(country, aes(x = Annual.GDP, y = GDP.per.capita, color = Continent)) +
+  geom_point() +
+  labs(title = "Distribution of GDP and GDP per Capita",
+       x = "GDP",
+       y = "GDP per Capita",
+       color = "Continent")
+```
+- Higher levels of GDP are seen across north America.
+- Europe has the highest levels of of GDP per capita despite have a low annual GDP
+
+
+```{r}
+# Scatter plot with regression line for Debt vs. GDP
+ggplot(country, aes(x = Debt, y = Annual.GDP)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  labs(title = "Correlation between Debt and GDP",
+       x = "Debt",
+       y = "GDP")
+
+# Scatter plot with regression line for Debt per capita vs. GDP per capita
+ggplot(country, aes(x = Debt.Per.Capita, y = GDP.per.capita)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  labs(title = "Correlation between Debt per Capita and GDP per Capita",
+       x = "Debt per Capita",
+       y = "GDP per Capita")
+
+```
+- Correlation appears to decrease as all values increase
+- Example: GDP.per.capita and Debt.per.capita become less linear as the values increase
+
+ 
+## Random Data Visualizations
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(car) # For MANOVA
+#library(FactoMineR) # For PCA
+library(stats) # For normality tests
+
+ggplot(country, aes(x = Continent, fill = status)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Distribution of Countries by Continent and Status",
+       x = "Continent", y = "Count")
+
+ggplot(country, aes(x = status, y = Annual.GDP)) +
+  geom_boxplot() +
+  labs(title = "Distribution of GDP by Development Status",
+       x = "Status", y = "GDP")
+
+ggplot(country, aes(x = GDP.per.capita, y = Life.expectancy, color=status)) +
+  geom_point() +
+  labs(title = "Scatter Plot of GDP per Capita vs. Life Expectancy",
+       x = "GDP per Capita", y = "Life Expectancy")
+
+# Create a new column for counting
+country.count <- country %>%
+  group_by(Continent) %>%
+  summarise(count = n())
+
+# Plot the polar bar chart with counts
+ggplot(country.count, aes(x = "", y = count, fill = Continent)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar(theta = "y") +
+  geom_text(aes(label = count), position = position_stack(vjust = 0.5)) +
+  labs(title = "Proportion of Countries in Each Continent")
+
+ggplot(country, aes(x = Population)) +
+  geom_histogram(binwidth = 1000000, fill = "skyblue", color = "black", alpha = 0.7) +
+  labs(title = "Distribution of Population",
+       x = "Population", y = "Frequency")
+
+library(treemap)
+treemap(
+  dtf = country,
+  index = c("Continent", "status", "Country"),  # Hierarchical index
+  vSize = "Annual.GDP",
+  vColor = "Annual.GDP",
+  draw = TRUE  # Set to TRUE to display the treemap
+)
+
+
+# 8. Violin Plot for Distribution of a Continuous Variable
+ggplot(country, aes(x = status, y = Corruption.Index)) +
+  geom_violin(fill = "skyblue", color = "black", alpha = 0.7) +
+  labs(title = "Distribution of Corruption Index by Development Status",
+       x = "Status", y = "Corruption Index")
+
+ggplot(country, aes(x = Date, y = Annual.GDP)) +
+  geom_line() +
+  labs(title = "Time Series Plot of GDP over the Years",
+       x = "Year", y = "GDP")
+
+```
+
+## Economic Analysis - Let's evaluate the developed and developing countries based on their economic variables
+### Status Means
+```{r}
+# Calculate group mean
+tapply(country[, 5:22], country$status, colMeans)
+```
+
+### Inference for Means
+```{r}
+library(tidyverse)
+library(DescTools)
+library(dplyr)
+library(car)
+
+
+# We want to assess all potential economic factors
+economic_vars <- country[, c("Annual.GDP", "GDP.per.capita", "Debt", "Expenditure", "Exports", "Imports")]
+
+# Split the data based on the 'Status' variable (developed vs. developing)
+developed_data <- economic_vars[country$status == "Developed", ]
+developing_data <- economic_vars[country$status == "Developing", ]
+
+# Perform Hotelling's T-squared test
+HotellingsT2Test(developed_data, developing_data)
+
+```
+- T2: 191.133
+- P-value: <2.2e-16
+- Null Hypothesis (H0): There is no difference in the mean economic profiles (GDP, GDP per capita, Debt, Expenditure, Exports, Imports) between developed and developing countries.
+- Alternative Hypothesis (H1): There is a significant difference in the mean economic profiles between developed and developing countries.
+- reject the null hypothesis. there are significant differences in the mean economic profiles between developed and developing countries.
+
+### MANOVA
+```{r}
+fit.lm <- lm(cbind(Annual.GDP, GDP.per.capita, Expenditure, Debt, Exports, Imports) ~ status, data = country) 
+# Display the results
+summary(Manova(fit.lm))
+```
+- F-Value: 376.6468
+- DF: (3,1226)
+- P-value: < 2.22e-16
+- Null Hypothesis (H0): There is no significant difference in the means of the dependent variables across the "status" groups.
+- Alternative Hypothesis (H1): There is a significant difference in the means of the dependent variables across the "status" groups.
+- Wilks P-value is less than 2.22e-16, reject the null hypothesis. There is strong evidence that the means of the dependent variables (e.g., GDP, GDP per capita, Expenditure) differ significantly across the "status" groups (developed and developing countries)
+
+### Test for multivariate Normality
+```{r}
+developed_data <- country[country$status == "Developed", ]
+developing_data <- country[country$status == "Developing", ]
+
+library(mvShapiroTest)
+mvShapiro.Test(as.matrix(developed_data[,5:22]))
+mvShapiro.Test(as.matrix(developing_data[,5:22]))
+```
+- The extremely low p-value indicates strong evidence against the null hypothesis that the data in the developed countries group follows a multivariate normal distribution.
+
+
+
+## Corruption Analaysis
+```{r}
+correlations <- cor(country[, 5:22])
+correlations
+
+library(reshape2)
+
+# Melt the correlation matrix for ggplot
+melted_corr <- melt(correlations)
+
+# Plot using ggplot2 with numbers
+ggplot(melted_corr, aes(Var1, Var2, fill = value, label = round(value, 2))) +
+  geom_tile(color = "white") +
+  geom_text(size = 3) +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  theme_minimal() +
+  labs(title = "Correlation Matrix",
+       x = "Variables",
+       y = "Variables")
+
+
+```
+
+
+## Predict and Classify Corruption Index
+- Using variables that I see highly correlated with these variables
+
+### MAKE COUNTRY CONTINENT
+```{r}
+country$Country <- as.factor(country$Country)
+country$Continent <- as.factor(country$Continent)
+```
+
+
+
+```{r}
+# Load necessary libraries
+library(caret)
+library(randomForest)
+
+
+# Split the data into training and testing sets
+set.seed(122)  
+trainIndex <- createDataPartition(country$Corruption.Index, p = 0.8, list = FALSE)
+train_data <- country[trainIndex, ]
+test_data <- country[-trainIndex, ]
+
+
+# Compute correlation matrix
+correlation_matrix <- cor(train_data[,5:22])
+correlation_with_target <- correlation_matrix[, "Corruption.Index"]
+
+# Display variables sorted by correlation
+print(sort(correlation_with_target, decreasing = TRUE))
+```
+
+
+```{r}
+# Corruption Index Prediction
+corruption_model <- lm(Corruption.Index ~ GDP.per.capita + HDI, data = train_data)
+
+# Make predictions on the test set
+corruption_predictions <- predict(corruption_model, newdata = test_data)
+
+# Evaluate the model
+corruption_rmse <- sqrt(mean((corruption_predictions - test_data$Corruption.Index)^2, na.rm = TRUE))
+print(paste("Corruption Index RMSE: ", corruption_rmse))
+
+
+```
+
+
+
+```{r}
+coefficients(corruption_model)
+```
+
+```{r}
+# Residual analysis
+plot(corruption_model, which = 1)
+
+```
+
+```{r}
+summary(corruption_model)
+```
+- The R-squared value is 0.7527, suggesting that approximately 75.27% of the variance in the Corruption Index is explained by the model. This is a relatively high value, indicating a good fit.
+
+
+## Principal Component Analysis on Economic Varibles
+```{r}
+corruption_dev_vars <- country[, c('Annual.GDP','GDP.per.capita','Debt', 'Debt.Per.Capita','Expenditure',
+                                   'Expenditure.Per.Capita','Exports', "Exports...GDP", "Imports", "Imports...GDP")]
+
+corruption.pc <- prcomp(corruption_dev_vars, center=T, scale.=T)
+summary(corruption.pc)
+
+ggplot(data.frame(x = 1:length(corruption.pc$sdev), y = corruption.pc$sdev^2), aes(x, y)) +
+geom_line() +
+geom_point() +
+labs(x = "No. of PCs", y = "Component Variance (eigenvalue)", title = "Scree Plot")
+```
+
+- The first four principal components (PC1 to PC4) capture around 91% of the total variance
+
+```{r}
+# Extract loadings
+loadings <- corruption.pc$rotation
+
+# Display loadings
+print("Loadings:")
+print(loadings)
+
+# Visualization of loadings
+library(ggplot2)
+library(tidyr)
+
+# Convert loadings to a data frame for plotting
+loadings_df <- as.data.frame(loadings)
+loadings_df$PC <- factor(1:ncol(loadings_df))
+
+# Reshape data for plotting
+loadings_long <- gather(loadings_df, key = "Variable", value = "Loading", -PC)
+
+# Plot loadings
+ggplot(loadings_long, aes(x = PC, y = Loading, fill = Variable)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Principal Component", y = "Loading", title = "Variable Loadings on Principal Components") +
+  theme_minimal()
+
+```
+
+- PC1:
+- Positive Loadings: Annual.GDP, GDP.per.capita, Debt, Debt.Per.Capita, Exports, Exports...GDP, Imports.
+- Interpretation: This component seems to capture overall economic activity and trade.
+
+- PC2: 
+- Positive Loadings: Expenditure, Expenditure.Per.Capita.
+- Negative Loadings: GDP.per.capita, Imports, Imports...GDP.
+- Interpretation: This component seems to represent government expenditure and its relationship with GDP, imports, and exports.
+
+- PC3:
+- Positive Loadings: Expenditure, Expenditure.Per.Capita.
+- Negative Loadings: GDP.per.capita, Imports, Imports...GDP.
+- Interpretation: Similar to PC2, indicating a relationship between government expenditure and GDP.
+
+- PC4:
+- Positive Loadings: GDP.per.capita, Imports, Imports...GDP.
+- Negative Loadings: Debt, Debt.Per.Capita, Exports, Exports...GDP.
+- Interpretation: This component seems to capture the trade-off between economic development and trade.
+
+We are going to ignore everything after since as previously discussed, 4 PCs summarizes about 91% of the data.
+
+
+## K-Means Clustering
+- Before we begin our K-means clustering we want to find the optimal amount of clusters as well as understand what variables we should be considered in our model
+- To determine the cluster count we will be performing the elbow method (The elbow method looks for the point at which adding more clusters does not significantly reduce the WCSS)
+- We will use a correlation matrix to determine which variables to use in order to ensure there is no redundancy (highlu correlated variables will not be beneficial). Will consider variables between .5-.7
+
+
+```{r}
+cor(country[,5:22])
+
+```
+- Choosing: Annual.GDP, Exports, Imports, Corruption.Index, HDI, CO2.Tons.per.capita
+
+```{r}
+set.seed(123)
+economic_data <- country[, c('Annual.GDP', 'Exports', 'Imports', 'Corruption.Index', 'HDI', 'CO2.Tons.per.capita')]
+
+# Standardize the data
+scaled_economic_data <- scale(economic_data)
+
+# Elbow Method
+wss <- numeric(10)  # Adjust the number of clusters based on your analysis
+
+for (i in 1:10) {
+  kmeans_model <- kmeans(scaled_economic_data, centers = i, nstart = 25)
+  wss[i] <- sum(kmeans_model$withinss)
+}
+
+# Plot the elbow
+plot(1:10, wss, type = "b", main = "Elbow Method",
+     xlab = "Number of Clusters (k)", ylab = "Within-cluster Sum of Squares")
+
+
+```
+
+- Give that after the 3rd cluster the slope of the graph decreases, we will use 3 clusters
+
+### Identifying Economic Patterns
+```{r}
+kmeans_model <- kmeans(scaled_economic_data, centers = 3)
+country$Cluster <- as.factor(kmeans_model$cluster)
+
+# Visualize clusters with additional variables
+ggplot(country, aes(x = Annual.GDP, y = Corruption.Index, color = Cluster)) +
+  geom_point() +
+  labs(title = "K-means Clustering of Countries with Additional Variables")
+
+# Display variable centers for interpretation
+kmeans_model$centers
+```
+- Cluster 1: Higher values in Annual.GDP, Exports, Imports, Corruption.Index, HDI, and CO2.Tons.per.capita. This cluster may represent countries with high economic development, exports, and imports, as well as higher corruption, human development, and CO2 emissions per capita.
+
+- Cluster 2: Lower values in Annual.GDP, Exports, Imports, Corruption.Index, HDI, and CO2.Tons.per.capita. This cluster may represent countries with lower economic development, exports, imports, lower corruption, human development, and lower CO2 emissions per capita.
+
+- Cluster 3: Moderate values in Annual.GDP, Exports, Imports, Corruption.Index, HDI, and CO2.Tons.per.capita. This cluster may represent countries with moderate economic development, exports, imports, corruption, human development, and CO2 emissions per capita.
+
+
+## Hierarchical Clustering
+```{r}
+library(vegan)
+library(fpc)
+country.dist <- vegdist(country[,5:22], method = "euclidean")
+country.clust <- hclust(country.dist, method = "ward.D2")
+
+# Plot within/between ratios against number of clusters
+country.ratio <- sapply(2:10, function(x) cluster.stats(country.dist, clustering = cutree(country.clust, x))$wb.ratio)
+ggplot(data.frame(x = 2:10, y = country.ratio), aes(x, y)) +
+  geom_point() +
+  geom_line() +
+  labs(x = "Number of Clusters", y = "Within/Between Ratio", title = "Euclidean Distance (Ward's Method)")
+
+# Plot Calinski-Harabasz index against number of clusters
+country.ch <- sapply(2:10, function(x) cluster.stats(country.dist, clustering = cutree(country.clust, x))$ch)
+ggplot(data.frame(x = 2:10, y = country.ch), aes(x, y)) +
+  geom_point() +
+  geom_line() +
+  labs(x = "Number of Clusters", y = "CH Index", title = "Euclidean Distance (Ward's Method)")
+
+country.clust.cls <- cutree(country.clust, 10)  # 3-cluster model
+```
+
+```{r}
+library(dendextend)
+library(factoextra)
+library(dplyr)
+library(tidyr)
+
+economic_data <- country[, c('Annual.GDP', 'Exports', 'Imports', 'Corruption.Index', 'HDI', 'CO2.Tons.per.capita')]
+
+# Standardize the data
+scaled_data <- scale(economic_data)
+
+# Perform hierarchical clustering
+hierarchical_clustering <- hclust(dist(scaled_data), method = "complete")
+
+# Cut the dendrogram to get clusters
+num_clusters <- 3 
+cluster_labels <- cutree(hierarchical_clustering, k = num_clusters)
+
+# Add cluster labels to the original data
+data_with_clusters <- cbind(scaled_data, Cluster = as.factor(cluster_labels))
+
+# Visualize the dendrogram
+dend <- as.dendrogram(hierarchical_clustering)
+dend %>% 
+  set("branches_k_color", k = num_clusters) %>%
+  plot(main = "Dendrogram for Agglomerative Hierarchical Clustering")
+
+# Visualize the clusters in a scatter plot
+fviz_cluster(list(data = scaled_data, cluster = cluster_labels)) +
+  labs(title = "Clusters from Agglomerative Hierarchical Clustering",
+       x = "Principal Component 1",
+       y = "Principal Component 2")
+
+# Display the first few rows of the data with cluster assignments
+data_with_clusters_df <- as.data.frame(data_with_clusters)
+
+head(data_with_clusters_df[data_with_clusters_df$Cluster == 1, ])
+head(data_with_clusters_df[data_with_clusters_df$Cluster == 2, ])
+head(data_with_clusters_df[data_with_clusters_df$Cluster == 3, ])
+
+```
+
+```{r}
+# Calculate mean values for each cluster
+cluster_means <- aggregate(data_with_clusters[, 1:6], by = list(Cluster = data_with_clusters_df$Cluster), FUN = mean)
+
+# Print the results
+print(cluster_means)
+
+```
+
+Cluster 1:
+- Annual.GDP: Slightly below the overall mean, indicating a lower GDP on average.
+- Exports: Similar to Annual.GDP, slightly below the overall mean.
+- Imports: Slightly below the overall mean, suggesting lower imports.
+- Corruption.Index: Close to the overall mean, indicating average corruption levels.
+- HDI (Human Development Index): Close to the overall mean, suggesting average human development.
+- CO2.Tons.per.capita: Slightly below the overall mean, indicating a relatively lower carbon footprint.
+
+Cluster 2:
+- Annual.GDP: Considerably below the overall mean, indicating lower GDP.
+- Exports: Much higher than the overall mean, suggesting a high level of exports.
+- Imports: Also higher than the overall mean, indicating a high level of imports.
+- Corruption.Index: Significantly below the overall mean, suggesting lower corruption.
+- HDI: Below the overall mean, indicating lower human development.
+- CO2.Tons.per.capita: Above the overall mean, indicating a higher carbon footprint.
+
+
+Cluster 3:
+- Annual.GDP: Significantly above the overall mean, indicating higher GDP.
+- Exports: Above the overall mean, suggesting a moderate level of exports.
+- Imports: Slightly above the overall mean, indicating a moderate level of imports.
+- Corruption.Index: Above the overall mean, suggesting a moderate level of corruption.
+- HDI: Above the overall mean, indicating higher human development.
+- CO2.Tons.per.capita: Above the overall mean, suggesting a higher carbon footprint.
+
+
+## Classification - Logistic Regression
+- Can we classify countries into status based on the available features.
+- In this case we will use logistic regression, we will use all variables in this case to classify continets
+
+```{r}
+# Rereading data just to ensure data is clean
+country <- read.csv('sample-data.csv')
+
+names(country)
+names(country[,9:10])
+names(country)[names(country) == "Expenditure..M..."] <- "Expenditure"
+names(country)[names(country) == "Deficit...M..."] <- "Deficit"
+names(country[,9:10])
+```
+
+- We will use stepwise selection 
+- Based on correlations previously we saw that annual.GDP and DEBT were highly correlated so I decided to remove those to avoid multicollinearity
+- I believe imports, expenditure and exports are better economic variables that can help explain the previous 2 variables
+```{r}
+library(tidyverse)
+
+country$status <- as.factor(country$status)
+country$status_code <- as.numeric(country$status == "Developed")
+
+# Split the data into training and testing sets
+set.seed(123)
+splitIndex <- createDataPartition(country$status_code, p = 0.8, list = FALSE)
+train_data <- country[splitIndex, ]
+test_data <- country[-splitIndex, ]
+
+# Perform logistic regression with stepwise variable selection
+initial_model <- glm(status_code ~ Expenditure+CO2.Tons.per.capita++Expenditure+HDI+Corruption.Index+
+                     Fertility.Rate+Crude.death.rate+Life.expectancy, family = 'binomial', data = train_data) 
+
+step_model <- step(initial_model, direction = "both", trace = FALSE)
+
+
+# Assess model performance (you may want to split your data into training and testing sets for a more robust evaluation)
+predicted_probs <- predict(step_model, type = "response")
+predicted_classes <- ifelse(predicted_probs > 0.5, 1, 0)
+
+
+observed_classes <- train_data$status_code
+
+# Assess model performance
+conf_matrix <- table(observed_classes, predicted_classes)
+accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
+print(paste("Accuracy:", accuracy))
+
+coefficients <- coef(step_model)
+print(coefficients)
+
+# Precision
+precision <- conf_matrix[2, 2] / sum(conf_matrix[, 2])
+print(paste("Precision:", precision))
+
+```
+- The overall accuracy of 96% suggests that the model is performing well in terms of correct classification. 
+- The high precision indicates that when the model predicts a country as "Developed," it is likely to be correct about 90% of the time.
+
+### Health and Human Development:
+#### Decisions Tree
+- Classify countries into high, medium, or low human development categories based on HDI (human development index), life expectancy, fertility rate, and other relevant features.
+- According to United Nations Development Program:
+- >= .8 VERY HIGH DEVELOPMENT
+- .7-.7999 HIGH DEVELOPMENT
+- .55-.699 MEDIUM DEVELOPMENT
+- <.55 LOW DEVELOPMENT
+
+```{r}
+# Load necessary libraries
+library(rpart)
+library(rpart.plot)
+library(caret)
+library(dplyr)
+
+df <- read.csv("sample-data.csv")
+
+# Create a new categorical variable for Human Development Level based on HDI
+df$Human_Development_Level <- cut(df$HDI,
+                                  breaks = c(-Inf, 0.549, 0.699, 0.799, Inf),
+                                  labels = c("Low", "Medium", "High", "Very High"))
+
+features <- c("Life.expectancy", "Fertility.Rate", "Crude.death.rate", "Corruption.Index")
+target <- "Human_Development_Level"
+
+# Create a new dataframe with selected features
+df_selected <- df[, c(features, target)]
+
+# Convert categorical variables to factors
+df_selected$Human_Development_Level <- as.factor(df_selected$Human_Development_Level)
+
+set.seed(150)
+train_index <- createDataPartition(df_selected$Human_Development_Level, p = 0.8, list = FALSE)
+train_data <- df_selected[train_index, ]
+test_data <- df_selected[-train_index, ]
+
+# Train a decision tree model
+tree_model <- rpart(Human_Development_Level ~ Life.expectancy + Fertility.Rate + Crude.death.rate + Corruption.Index, data = train_data, method = "class")
+
+# Visualize the decision tree
+rpart.plot(tree_model)
+
+# Make predictions on the test set
+predictions <- predict(tree_model, newdata = test_data, type = "class")
+
+# Confusion matrix
+conf_matrix <- confusionMatrix(predictions, test_data$Human_Development_Level)
+print(conf_matrix)
+```
+- The high accuracy, sensitivity, specificity, and precision values suggest that the decision tree model performs exceptionally well across all classes.
+- The model predicted 28 instances correctly as "Low," 52 instances correctly as "Medium," 47 instances correctly as "High," and 86 instances correctly as "Very High."
+- The overall accuracy of the model is approximately 87.3%, which means the model correctly predicted the class for about 87.3% of the instances.
+
+
+#### Using LDA and QDA to see if we can predict Human Development Levels
+```{r}
+# Load necessary libraries
+library(MASS)  # For LDA
+
+
+features <- c("Annual.GDP", "Expenditure..M...", "Corruption.Index", "Exports", 
+              "Imports", "Population", "Fertility.Rate", 
+              "Crude.death.rate", "Life.expectancy", "CO2.Tons.per.capita")
+
+target <- "Human_Development_Level"
+
+
+df_selected <- df[, c(features, target)]
+
+# Convert categorical variables to factors
+df_selected$Human_Development_Level <- as.factor(df_selected$Human_Development_Level)
+
+
+set.seed(123)
+train_index <- createDataPartition(df_selected$Human_Development_Level, p = 0.8, list = FALSE)
+train_data <- df_selected[train_index, ]
+test_data <- df_selected[-train_index, ]
+
+lda_model <- lda(Human_Development_Level ~ ., data = train_data)
+
+# Make predictions using LDA on the test set
+lda_predictions <- predict(lda_model, newdata = test_data)
+
+# Display LDA confusion matrix and assess performance
+lda_conf_matrix <- table(lda_predictions$class, test_data$Human_Development_Level)
+print("LDA Confusion Matrix:")
+print(lda_conf_matrix)
+lda_accuracy <- sum(diag(lda_conf_matrix)) / sum(lda_conf_matrix)
+print(paste("LDA Accuracy:", lda_accuracy))
+
+# Train the QDA model
+qda_model <- qda(Human_Development_Level ~ ., data = train_data)
+
+# Make predictions using QDA on the test set
+qda_predictions <- predict(qda_model, newdata = test_data)
+
+# Display QDA confusion matrix and assess performance
+qda_conf_matrix <- table(qda_predictions$class, test_data$Human_Development_Level)
+print("QDA Confusion Matrix:")
+print(qda_conf_matrix)
+qda_accuracy <- sum(diag(qda_conf_matrix)) / sum(qda_conf_matrix)
+print(paste("QDA Accuracy:", qda_accuracy))
+```
+- Accuracy: 87.29%
+Interpretation:
+LDA has a higher accuracy compared to QDA.
+It performs well in correctly classifying instances, especially in the "Low" and "Very High" categories.
+
+- Accuracy: 77.86%
+Interpretation:
+QDA has a lower accuracy compared to LDA.
+It struggles in particular with the "Medium" category, misclassifying more instances as "High" and "Low."
+
+- LDA appears to be more accurate in this context, providing a better overall classification performance.
+
+
+
+```{r}
+precision_lda <- diag(lda_conf_matrix) / rowSums(lda_conf_matrix)
+print("Precision - LDA:")
+print(precision_lda)
+
+precision_qda <- diag(qda_conf_matrix) / rowSums(qda_conf_matrix)
+print("Precision - QDA:")
+print(precision_qda)
+```
+- LDA:
+- Out of the instances predicted as "Low," 97.05% actually belong to the "Low" class.
+- Out of the instances predicted as "Medium," 87.79% actually belong to the "Medium" class.
+- Out of the instances predicted as "High," 76.27% actually belong to the "High" class.
+- Out of the instances predicted as "Very High," 90.4% actually belong to the "Very High" class.
+
+- QDA: 
+- Out of the instances predicted as "Low," 64.70% actually belong to the "Low" class.
+- Out of the instances predicted as "Medium," 93.75% actually belong to the "Medium" class.
+- Out of the instances predicted as "High," 63.73% actually belong to the "High" class.
+- Out of the instances predicted as "Very High," 97.67% actually belong to the "Very High" class.
